@@ -253,19 +253,27 @@ jobs:
           VNT_TAG: ${{ needs.metadata.outputs.vnt_tag }}
         run: |
           set -euo pipefail
+          echo "=== Artifacts in release-assets ==="
           find release-assets -maxdepth 1 -type f -print
-          if ! gh release view "$APP_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "=== Creating/uploading release $APP_TAG ==="
+          if gh release view "$APP_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $APP_TAG already exists, will upload to it"
+          else
+            echo "Release $APP_TAG does not exist, creating..."
             gh release create "$APP_TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --title "VNT Android $APP_TAG" \
               --notes "Built with VNT Rust core [$VNT_TAG](https://github.com/$VNT_REPOSITORY/releases/tag/$VNT_TAG). Includes a universal APK plus arm64-v8a, armeabi-v7a, and x86_64 APKs."
           fi
+          echo "Uploading APKs..."
           gh release upload "$APP_TAG" release-assets/*.apk release-assets/*.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
+          echo "=== Release upload done ==="
 
       - name: Add APK download links to release notes
         env:
           GH_TOKEN: ${{ github.token }}
           APP_TAG: ${{ needs.metadata.outputs.app_tag }}
-        run: node .github/scripts/update-release-downloads.mjs
+        continue-on-error: true
+        run: node .github/scripts/update-release-downloads.mjs || echo "⚠️  update-release-downloads 脚本失败，跳过（不影响发布）"
