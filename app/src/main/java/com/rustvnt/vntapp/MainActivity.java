@@ -1688,7 +1688,6 @@ public final class MainActivity extends AppCompatActivity {
     private void openWebsite(WebsiteConfig site) {
         Intent intent = new Intent(this, IntranetWebActivity.class);
         intent.putExtra(IntranetWebActivity.EXTRA_URL, site.fullUrl());
-        intent.putExtra(IntranetWebActivity.EXTRA_TITLE, site.name);
         startActivity(intent);
     }
 

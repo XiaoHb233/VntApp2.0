@@ -1,6 +1,7 @@
 package com.rustvnt.vntapp;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -31,11 +32,9 @@ public class IntranetWebActivity extends AppCompatActivity {
     private static final long BACK_INTERVAL = 1500;
 
     public static final String EXTRA_URL = "url";
-    public static final String EXTRA_TITLE = "title";
 
     private WebView webView;
     private ProgressBar progressBar;
-    private String entryUrl;
     private String currentUrl;
     private long lastBackTime;
     private ValueCallback<Uri[]> filePathCallback;
@@ -47,7 +46,7 @@ public class IntranetWebActivity extends AppCompatActivity {
         supportRequestWindowFeature(Window.FEATURE_NO_TITLE);
         super.onCreate(savedInstanceState);
 
-        // 让系统窗口 insets（状态栏/导航栏）正常生效
+        // 让系统窗口 insets（状态栏/导航栏）正常生效；targetSdk 37 永远 >= R
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(true);
         }
@@ -55,7 +54,6 @@ public class IntranetWebActivity extends AppCompatActivity {
 
         Intent intent = getIntent();
         String url = intent.getStringExtra(EXTRA_URL);
-        entryUrl = url;
         currentUrl = url;
 
         webView = findViewById(R.id.webView);
