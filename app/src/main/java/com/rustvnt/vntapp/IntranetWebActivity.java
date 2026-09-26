@@ -162,7 +162,8 @@ public class IntranetWebActivity extends AppCompatActivity {
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         String[] acceptTypes = params.getAcceptTypes();
         intent.setType(acceptTypes.length > 0 && !acceptTypes[0].isEmpty() ? acceptTypes[0] : "*/*");
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,
+                params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);
         startActivityForResult(Intent.createChooser(intent, "选择文件"), FILE_CHOOSER_REQUEST_CODE);
     }
 
