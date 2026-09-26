@@ -93,8 +93,6 @@ public final class VntApi {
         } catch (Exception error) { throw wrap("读取路由表", error); }
     }
 
-    public boolean isDirect(String ip) { return nativeIsDirect(handle, ip); }
-
     private static VntException wrap(String action, Exception error) {
         return error instanceof VntException ? (VntException) error : new VntException(action + "失败", error);
     }
@@ -104,9 +102,6 @@ public final class VntApi {
     private static native String nativeGetNatInfo(long handle);
     private static native String nativeGetServerList(long handle);
     private static native String nativeGetRouteTable(long handle);
-    private static native boolean nativeIsDirect(long handle, String ip);
-    private static native String nativeGetPacketLoss(long handle, String ip);
-    private static native String nativeGetTrafficInfo(long handle, String ip);
 
     public record NetworkInfo(String ip, int prefixLen, String gateway, String broadcast) {}
     public record NatInfo(String type, List<String> publicIps, String ipv6) {}

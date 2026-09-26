@@ -428,7 +428,8 @@ public final class VntVpnService extends VpnService {
         stopSelf();
     }
 
-    private void cleanupNative() {
+    /** 清理全部原生资源与状态；可能由 worker 线程（停止/失败路径）或主线程（onDestroy）调用，需同步 */
+    private synchronized void cleanupNative() {
         ipUpdates.close();
         subnetRouteUpdates.close();
         stopRefreshing();

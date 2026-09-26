@@ -38,7 +38,6 @@ public class IntranetWebActivity extends AppCompatActivity {
 
     private WebView webView;
     private ProgressBar progressBar;
-    private String currentUrl;
     private long lastBackTime;
     private ValueCallback<Uri[]> filePathCallback;
 
@@ -62,7 +61,6 @@ public class IntranetWebActivity extends AppCompatActivity {
 
         Intent intent = getIntent();
         String url = intent.getStringExtra(EXTRA_URL);
-        currentUrl = url;
 
         webView = findViewById(R.id.webView);
         progressBar = findViewById(R.id.progressBar);
@@ -149,7 +147,6 @@ public class IntranetWebActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 progressBar.setVisibility(View.GONE);
-                currentUrl = url;
                 cancelTimeoutCheck();
             }
 
