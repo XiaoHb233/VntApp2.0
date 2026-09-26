@@ -182,6 +182,11 @@ public final class VntVpnService extends VpnService {
             if (cancellationRequested) { shutdown(); return; }
             VntState running = readState(id, name, registration.getIp());
             publish(running);
+            // 记录本次成功连接的配置，供"自动连接"功能下次打开软件时使用
+            getSharedPreferences("vnt_settings", MODE_PRIVATE).edit()
+                    .putString("last_profile_id", id)
+                    .putString("last_profile_name", name)
+                    .apply();
             startForeground(NOTIFICATION_ID, notification("已连接 · " + registration.getIp(), true));
             startRefreshing();
         } catch (Throwable error) {

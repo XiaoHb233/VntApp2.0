@@ -133,6 +133,7 @@ public final class MainActivity extends AppCompatActivity {
         }
         VntVpnService.setUiVisible(true);
         render();
+        tryAutoConnect();
     }
 
     @Override protected void onStop() {
@@ -256,6 +257,22 @@ public final class MainActivity extends AppCompatActivity {
         navigation.addView(nav("⚙", "组网配置", Page.CONFIG), navItemParams(dp(4)));
         navigation.addView(nav("🌐", "内网访问", Page.INTRANET), navItemParams(dp(4)));
         navigation.addView(nav("ⓘ", "关于", Page.ABOUT), navItemParams(dp(4)));
+
+        // 自动连接开关：打开软件时自动启动上次成功连接的配置
+        LinearLayout autoRow = row();
+        autoRow.setGravity(Gravity.CENTER_VERTICAL);
+        autoRow.setPadding(dp(12), 0, dp(8), 0);
+        LinearLayout autoTexts = column();
+        autoTexts.addView(text("⚡ 自动连接", 14, false, textBody()));
+        autoTexts.addView(text("打开软件时启动上次配置", 10, false, textMuted()), top(2));
+        autoRow.addView(autoTexts, weighted());
+        SharedPreferences autoPrefs = getSharedPreferences("vnt_settings", MODE_PRIVATE);
+        CheckBox autoBox = new CheckBox(this);
+        autoBox.setChecked(autoPrefs.getBoolean("auto_connect", false));
+        autoBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                autoPrefs.edit().putBoolean("auto_connect", isChecked).apply());
+        autoRow.addView(autoBox);
+        navigation.addView(autoRow, navItemParams(dp(4)));
 
         Space space = new Space(this);
         navigation.addView(space, new LinearLayout.LayoutParams(1, 0, 1));
@@ -1107,6 +1124,19 @@ public final class MainActivity extends AppCompatActivity {
         } catch (Exception error) {
             toast(error.getMessage() == null ? "添加配置失败" : error.getMessage());
         }
+    }
+
+    /** 自动连接：开关开启、组网未运行且存在上次成功连接的配置时自动发起连接（权限已在首次连接时授权） */
+    private void tryAutoConnect() {
+        SharedPreferences prefs = getSharedPreferences("vnt_settings", MODE_PRIVATE);
+        if (!prefs.getBoolean("auto_connect", false)) return;
+        VntState current = VntVpnService.state();
+        if (current.status != VntState.Status.STOPPED) return;
+        String lastId = prefs.getString("last_profile_id", null);
+        if (lastId == null) return;
+        VntConfigStore.Profile profile = store.find(lastId);
+        if (profile == null) return;
+        requestVpn(profile);
     }
 
     private void requestVpn(VntConfigStore.Profile profile) {
