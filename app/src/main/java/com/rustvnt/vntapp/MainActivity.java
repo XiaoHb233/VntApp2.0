@@ -1129,7 +1129,10 @@ public final class MainActivity extends AppCompatActivity {
         LinearLayout labelRow = row();
         labelRow.setGravity(Gravity.CENTER_VERTICAL);
         labelRow.addView(text(label, 12, true, textBody()), weighted());
-        labelRow.addView(configHelpButton(label, help), size(32, 32));
+        // help 为 null 或空时不渲染帮助按钮
+        if (help != null && !help.isEmpty()) {
+            labelRow.addView(configHelpButton(label, help), size(32, 32));
+        }
         form.addView(labelRow, top(12));
         return labelRow;
     }
