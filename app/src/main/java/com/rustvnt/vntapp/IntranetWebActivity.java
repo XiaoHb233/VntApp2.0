@@ -7,7 +7,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
 import android.webkit.ValueCallback;
@@ -19,11 +18,13 @@ import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.Nullable;
 
 /**
  * 内网 WebView Activity - 承载内网网站访问
  * 比旧版简化：无底部导航栏（新版使用 Drawer 侧边栏统一导航）
+ * 使用 OnBackPressedDispatcher 处理返回，兼容 Android 14+ Predictive Back 要求
  */
 public class IntranetWebActivity extends Activity {
     private static final String TAG = "IntranetWebActivity";
@@ -58,6 +59,32 @@ public class IntranetWebActivity extends Activity {
         progressBar = findViewById(R.id.progressBar);
 
         initWebView(url);
+        setupBackHandler();
+    }
+
+    /** 注册 Predictive Back 回调，替代旧式 onKeyDown 拦截 */
+    private void setupBackHandler() {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                long now = System.currentTimeMillis();
+                if (now - lastBackTime > BACK_INTERVAL) {
+                    lastBackTime = now;
+                    if (webView != null && webView.canGoBack()) {
+                        webView.goBack();
+                        Toast.makeText(IntranetWebActivity.this, "再按一次返回退出",
+                                Toast.LENGTH_SHORT).show();
+                    } else {
+                        // 交给系统处理（finish Activity）
+                        setEnabled(false);
+                        getOnBackPressedDispatcher().onBackPressed();
+                    }
+                } else {
+                    setEnabled(false);
+                    getOnBackPressedDispatcher().onBackPressed();
+                }
+            }
+        });
     }
 
     private void initWebView(String url) {
@@ -68,9 +95,8 @@ public class IntranetWebActivity extends Activity {
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/91.0 Mobile Safari/537.36");
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        }
+        // minSdk 24 >= KITKAT，可直接调用
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
         // URL 加载策略：http/https 在 WebView 内打开，其他 scheme 交给外部 App
         webView.setWebViewClient(new WebViewClient() {
@@ -88,15 +114,14 @@ public class IntranetWebActivity extends Activity {
             private boolean handleUrlLoading(Uri uri) {
                 String scheme = uri.getScheme();
                 if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
-                    return false; // WebView 内继续加载
+                    return false;
                 }
-                // 其他 scheme（如 imeituan://、alipays:// 等）交给外部 App
                 try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-                    startActivity(intent);
+                    startActivity(new Intent(Intent.ACTION_VIEW, uri));
                 } catch (Exception e) {
                     Log.e(TAG, "无法打开外部链接: " + uri, e);
-                    Toast.makeText(IntranetWebActivity.this, "无法打开该链接", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(IntranetWebActivity.this, "无法打开该链接",
+                            Toast.LENGTH_SHORT).show();
                 }
                 return true;
             }
@@ -113,7 +138,6 @@ public class IntranetWebActivity extends Activity {
             }
         });
 
-        // 进度回调 + 文件选择支持
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
@@ -122,7 +146,7 @@ public class IntranetWebActivity extends Activity {
 
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> callback,
-                                             WebChromeClient.FileChooserParams params) {
+                                             FileChooserParams params) {
                 filePathCallback = callback;
                 openFileChooser(params);
                 return true;
@@ -139,7 +163,7 @@ public class IntranetWebActivity extends Activity {
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         String[] acceptTypes = params.getAcceptTypes();
         intent.setType(acceptTypes.length > 0 && !acceptTypes[0].isEmpty() ? acceptTypes[0] : "*/*");
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
         startActivityForResult(Intent.createChooser(intent, "选择文件"), FILE_CHOOSER_REQUEST_CODE);
     }
 
@@ -161,31 +185,6 @@ public class IntranetWebActivity extends Activity {
             }
             filePathCallback.onReceiveValue(results);
             filePathCallback = null;
-        }
-    }
-
-    /** 返回手势：WebView 有历史则回退，否则关闭 Activity；连按两次直接关闭 */
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            handleBack();
-            return true;
-        }
-        return super.onKeyDown(keyCode, event);
-    }
-
-    private void handleBack() {
-        long now = System.currentTimeMillis();
-        if (now - lastBackTime > BACK_INTERVAL) {
-            lastBackTime = now;
-            if (webView.canGoBack()) {
-                webView.goBack();
-                Toast.makeText(this, "再按一次返回退出", Toast.LENGTH_SHORT).show();
-            } else {
-                finish();
-            }
-        } else {
-            finish();
         }
     }
 
