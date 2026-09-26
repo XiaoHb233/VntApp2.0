@@ -232,7 +232,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish Android release:
+    name: Publish Android release
     needs: [metadata, build]
     runs-on: ubuntu-latest
     permissions:
