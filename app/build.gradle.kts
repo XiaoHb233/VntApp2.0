@@ -28,9 +28,6 @@ android {
             optimization {
                 enable = false
             }
-            // 与旧版保持一致：release 使用 debug keystore 签名，保证 APK 可直接安装
-            // Kotlin DSL 需要显式 getByName() 而不是 Groovy 的属性访问
-            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

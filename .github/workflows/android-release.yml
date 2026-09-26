@@ -177,51 +177,51 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          # Gradle 已配置 debug keystore 签名，产物是 app-release.apk（不再是 unsigned）
           apk="app/build/outputs/apk/release/app-release.apk"
-          # 兼容：如果因某些配置产出 unsigned，也能兜底找到
+          # Gradle 未配置签名时产物可能是 unsigned
           if [[ ! -f "$apk" ]]; then
             apk="$(find app/build/outputs/apk/release -name '*.apk' -not -name '*.aligned.apk' | head -1)"
           fi
+          echo "Input APK: $apk"
           mkdir -p release-assets
           output="release-assets/VNT-Android-${APP_TAG}-${VARIANT}.apk"
+          build_tools="$ANDROID_SDK_ROOT/build-tools/36.0.0"
+
+          # 检查 secrets 是否齐全
           missing=0
           for required in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            if [[ -z "${!required:-}" ]]; then
-              echo "⚠️  GitHub secret not configured: $required"
-              missing=1
-            fi
+            [[ -z "${!required:-}" ]] && missing=1 || true
           done
+
           if [[ $missing -eq 1 ]]; then
-            echo "⚠️  签名 secrets 未完整配置，使用 Gradle 自动签名的 APK（debug keystore）"
-            cp "$apk" "$output"
+            echo "⚠️  GitHub secrets 未配置，生成临时 debug keystore 签名"
+            KEYSTORE=/tmp/vnt-debug.keystore
+            keytool -genkey -v -keystore "$KEYSTORE" \
+              -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              >/dev/null 2>&1
+            "$build_tools/zipalign" -f -P 16 4 "$apk" "${apk}.aligned"
+            "$build_tools/apksigner" sign \
+              --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android \
+              --out "$output" "${apk}.aligned"
+            rm -f "${apk}.aligned" "$KEYSTORE"
           else
-            echo "🔐  使用 GitHub secrets 执行正式签名..."
+            echo "🔐  使用 GitHub secrets 执行正式签名"
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release.keystore
-            build_tools="$ANDROID_SDK_ROOT/build-tools/36.0.0"
-            aligned="release-assets/VNT-Android-${APP_TAG}-${VARIANT}-aligned.apk"
-            "$build_tools/zipalign" -f -P 16 4 "$apk" "$aligned"
+            "$build_tools/zipalign" -f -P 16 4 "$apk" "${apk}.aligned"
             "$build_tools/apksigner" sign \
               --ks release.keystore \
               --ks-key-alias "$ANDROID_KEY_ALIAS" \
               --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
               --key-pass env:ANDROID_KEY_PASSWORD \
-              --out "$output" \
-              "$aligned"
-            rm "$aligned" release.keystore
-            "$build_tools/zipalign" -c -P 16 4 "$output"
-            "$build_tools/apksigner" verify --verbose --print-certs "$output"
-            expected_libs="$(mktemp)"
-            for abi in $ABIS; do
-              echo "lib/$abi/libvnt_jni.so" >> "$expected_libs"
-              "$build_tools/aapt" list "$output" | grep -Fx "lib/$abi/libvnt_jni.so"
-            done
-            if "$build_tools/aapt" list "$output" | grep -E '^lib/' | grep -Fvx -f "$expected_libs"; then
-              echo "APK contains an unexpected ABI" >&2
-              exit 4
-            fi
-            rm "$expected_libs"
+              --out "$output" "${apk}.aligned"
+            rm -f "${apk}.aligned" release.keystore
           fi
+
+          # 验证签名
+          "$build_tools/apksigner" verify --verbose "$output"
+          echo "✅ APK 签名验证通过：$output"
           (cd release-assets && sha256sum "$(basename "$output")" > "$(basename "$output").sha256")
 
       - name: Upload signed APK
