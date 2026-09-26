@@ -19,13 +19,13 @@ import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatActivity;
 
 /**
  * 内网 WebView Activity - 承载内网网站访问
- * 比旧版简化：无底部导航栏（新版使用 Drawer 侧边栏统一导航）
- * 使用 OnBackPressedDispatcher 处理返回，兼容 Android 14+ Predictive Back 要求
+ * 继承 AppCompatActivity 以获取 OnBackPressedDispatcher
  */
-public class IntranetWebActivity extends Activity {
+public class IntranetWebActivity extends AppCompatActivity {
     private static final String TAG = "IntranetWebActivity";
     private static final int FILE_CHOOSER_REQUEST_CODE = 1001;
     private static final long BACK_INTERVAL = 1500;
