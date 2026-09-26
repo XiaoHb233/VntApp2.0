@@ -1,9 +1,9 @@
 package com.rustvnt.vntapp;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -43,10 +43,14 @@ public class IntranetWebActivity extends AppCompatActivity {
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        // AppCompatActivity 要求 supportRequestWindowFeature 必须在 super.onCreate() 之前调
+        supportRequestWindowFeature(Window.FEATURE_NO_TITLE);
         super.onCreate(savedInstanceState);
 
-        // 隐藏标题栏，让 WebView 全屏显示
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        // 让系统窗口 insets（状态栏/导航栏）正常生效
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(true);
+        }
         setContentView(R.layout.activity_intranet_web);
 
         Intent intent = getIntent();

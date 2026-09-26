@@ -43,6 +43,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.GravityCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import com.google.zxing.BarcodeFormat;
 import com.journeyapps.barcodescanner.BarcodeEncoder;
@@ -81,7 +83,7 @@ public final class MainActivity extends AppCompatActivity {
     private final List<Page> navPages = new ArrayList<>();
     private VntConfigStore store;
     private VntConfigStore.Profile pendingProfile;
-    private Page page = Page.DASHBOARD;
+    private Page page = Page.INTRANET;
     private boolean dark;
     private boolean stateReceiverRegistered;
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
@@ -154,6 +156,13 @@ public final class MainActivity extends AppCompatActivity {
         LinearLayout main = column();
         main.setBackgroundColor(bgPage());
         drawer.addView(main, new DrawerLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // 适配状态栏 insets，避免内容冲出状态栏（targetSdk 37 edge-to-edge 要求）
+        ViewCompat.setOnApplyWindowInsetsListener(main, (v, insets) -> {
+            int top = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;
+            v.setPadding(v.getPaddingLeft(), top, v.getPaddingRight(), v.getPaddingBottom());
+            return insets;
+        });
 
         LinearLayout header = row();
         header.setGravity(Gravity.CENTER_VERTICAL);
