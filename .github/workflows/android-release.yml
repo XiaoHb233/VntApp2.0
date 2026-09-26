@@ -255,7 +255,7 @@ jobs:
           tag_name: ${{ needs.metadata.outputs.app_tag }}
           name: VNT Android ${{ needs.metadata.outputs.app_tag }}
           body: |
-            Built with VNT Rust core [${{ needs.metadata.outputs.vnt_tag }}](https://github.com/${{ vars.VNT_REPOSITORY }}/releases/tag/${{ needs.metadata.outputs.vnt_tag }}).
+            Built with VNT Rust core [${{ needs.metadata.outputs.vnt_tag }}](https://github.com/${{ env.VNT_REPOSITORY }}/releases/tag/${{ needs.metadata.outputs.vnt_tag }}).
             Includes a universal APK plus arm64-v8a, armeabi-v7a, and x86_64 APKs.
           files: |
             release-assets/*.apk
