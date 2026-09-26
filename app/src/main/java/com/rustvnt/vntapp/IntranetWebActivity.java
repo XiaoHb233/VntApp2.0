@@ -141,8 +141,6 @@ public class IntranetWebActivity extends AppCompatActivity {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 progressBar.setVisibility(View.VISIBLE);
-                // 诊断输出（v2.1.2 临时）：显示实际开始加载的地址
-                Toast.makeText(IntranetWebActivity.this, "▶ 开始加载：" + url, Toast.LENGTH_SHORT).show();
                 // 启动超时检测
                 startTimeoutCheck(url);
             }
@@ -152,10 +150,6 @@ public class IntranetWebActivity extends AppCompatActivity {
                 progressBar.setVisibility(View.GONE);
                 pageFinished = true;
                 cancelTimeoutCheck();
-                // 诊断输出（v2.1.2 临时）：标题和内容高度能区分"空响应"与"渲染失败"
-                Toast.makeText(IntranetWebActivity.this,
-                        "✔ 加载完成：" + view.getTitle() + " | 内容高度=" + view.getContentHeight(),
-                        Toast.LENGTH_LONG).show();
             }
 
             @Override
@@ -166,7 +160,7 @@ public class IntranetWebActivity extends AppCompatActivity {
                             ? error.getDescription().toString() : "加载失败";
                     Log.e(TAG, "onReceivedError: url=" + request.getUrl() + " err=" + desc);
                     Toast.makeText(IntranetWebActivity.this,
-                            "页面加载失败：" + desc + "\n" + request.getUrl(), Toast.LENGTH_LONG).show();
+                            "页面加载失败：" + desc, Toast.LENGTH_LONG).show();
                 }
                 super.onReceivedError(view, request, error);
             }
