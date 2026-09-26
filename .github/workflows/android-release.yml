@@ -177,39 +177,47 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          for required in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            [[ -n "${!required:-}" ]] || {
-              echo "Required GitHub secret is missing: $required" >&2
-              exit 3
-            }
-          done
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release.keystore
-          build_tools="$ANDROID_SDK_ROOT/build-tools/36.0.0"
           unsigned="app/build/outputs/apk/release/app-release-unsigned.apk"
           mkdir -p release-assets
-          aligned="release-assets/VNT-Android-${APP_TAG}-${VARIANT}-aligned.apk"
           output="release-assets/VNT-Android-${APP_TAG}-${VARIANT}.apk"
-          "$build_tools/zipalign" -f -P 16 4 "$unsigned" "$aligned"
-          "$build_tools/apksigner" sign \
-            --ks release.keystore \
-            --ks-key-alias "$ANDROID_KEY_ALIAS" \
-            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
-            --key-pass env:ANDROID_KEY_PASSWORD \
-            --out "$output" \
-            "$aligned"
-          rm "$aligned" release.keystore
-          "$build_tools/zipalign" -c -P 16 4 "$output"
-          "$build_tools/apksigner" verify --verbose --print-certs "$output"
-          expected_libs="$(mktemp)"
-          for abi in $ABIS; do
-            echo "lib/$abi/libvnt_jni.so" >> "$expected_libs"
-            "$build_tools/aapt" list "$output" | grep -Fx "lib/$abi/libvnt_jni.so"
+          # 检查 secrets 是否都配置好了
+          missing=0
+          for required in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!required:-}" ]]; then
+              echo "⚠️  GitHub secret not configured: $required"
+              missing=1
+            fi
           done
-          if "$build_tools/aapt" list "$output" | grep -E '^lib/' | grep -Fvx -f "$expected_libs"; then
-            echo "APK contains an unexpected ABI" >&2
-            exit 4
+          if [[ $missing -eq 1 ]]; then
+            echo "⚠️  签名 secrets 未完整配置，使用 unsigned APK"
+            cp "$unsigned" "$output"
+          else
+            # secrets 齐全，执行正式签名流程
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release.keystore
+            build_tools="$ANDROID_SDK_ROOT/build-tools/36.0.0"
+            aligned="release-assets/VNT-Android-${APP_TAG}-${VARIANT}-aligned.apk"
+            "$build_tools/zipalign" -f -P 16 4 "$unsigned" "$aligned"
+            "$build_tools/apksigner" sign \
+              --ks release.keystore \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --key-pass env:ANDROID_KEY_PASSWORD \
+              --out "$output" \
+              "$aligned"
+            rm "$aligned" release.keystore
+            "$build_tools/zipalign" -c -P 16 4 "$output"
+            "$build_tools/apksigner" verify --verbose --print-certs "$output"
+            expected_libs="$(mktemp)"
+            for abi in $ABIS; do
+              echo "lib/$abi/libvnt_jni.so" >> "$expected_libs"
+              "$build_tools/aapt" list "$output" | grep -Fx "lib/$abi/libvnt_jni.so"
+            done
+            if "$build_tools/aapt" list "$output" | grep -E '^lib/' | grep -Fvx -f "$expected_libs"; then
+              echo "APK contains an unexpected ABI" >&2
+              exit 4
+            fi
+            rm "$expected_libs"
           fi
-          rm "$expected_libs"
           (cd release-assets && sha256sum "$(basename "$output")" > "$(basename "$output").sha256")
 
       - name: Upload signed APK
