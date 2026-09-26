@@ -6,15 +6,18 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.view.Window;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
@@ -38,6 +41,11 @@ public class IntranetWebActivity extends AppCompatActivity {
     private String currentUrl;
     private long lastBackTime;
     private ValueCallback<Uri[]> filePathCallback;
+
+    // 页面加载超时检测
+    private final Handler timeoutHandler = new Handler(Looper.getMainLooper());
+    private Runnable timeoutRunnable;
+    private static final long PAGE_LOAD_TIMEOUT_MS = 15000;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -95,6 +103,10 @@ public class IntranetWebActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/91.0 Mobile Safari/537.36");
+        // 允许混合 HTTP/HTTPS 内容，内网页面常出现
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        // 允许 File 协议访问（内网可能有本地资源）
+        settings.setAllowFileAccess(true);
 
         // minSdk 24 >= KITKAT，可直接调用
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -130,12 +142,40 @@ public class IntranetWebActivity extends AppCompatActivity {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 progressBar.setVisibility(View.VISIBLE);
+                // 启动超时检测
+                startTimeoutCheck(url);
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 progressBar.setVisibility(View.GONE);
                 currentUrl = url;
+                cancelTimeoutCheck();
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                // 只在主文档失败时提示，子资源（图片/JS/CSS）失败不打扰
+                if (request.isForMainFrame()) {
+                    String desc = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                            ? error.getDescription().toString() : "加载失败";
+                    Log.e(TAG, "onReceivedError: url=" + request.getUrl() + " err=" + desc);
+                    Toast.makeText(IntranetWebActivity.this,
+                            "页面加载失败：" + desc, Toast.LENGTH_LONG).show();
+                }
+                super.onReceivedError(view, request, error);
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            android.webkit.WebResourceResponse errorResponse) {
+                if (request.isForMainFrame()) {
+                    int statusCode = errorResponse.getStatusCode();
+                    Log.e(TAG, "onReceivedHttpError: url=" + request.getUrl() + " HTTP " + statusCode);
+                    Toast.makeText(IntranetWebActivity.this,
+                            "服务器返回 HTTP " + statusCode, Toast.LENGTH_LONG).show();
+                }
+                super.onReceivedHttpError(view, request, errorResponse);
             }
         });
 
@@ -143,6 +183,7 @@ public class IntranetWebActivity extends AppCompatActivity {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 progressBar.setProgress(newProgress);
+                if (newProgress >= 100) cancelTimeoutCheck();
             }
 
             @Override
@@ -156,6 +197,28 @@ public class IntranetWebActivity extends AppCompatActivity {
 
         if (url != null) {
             webView.loadUrl(url);
+        }
+    }
+
+    /** 启动页面加载超时检测，15s 还没完成就提示用户 */
+    private void startTimeoutCheck(String url) {
+        cancelTimeoutCheck();
+        timeoutRunnable = () -> {
+            if (webView != null && progressBar.getVisibility() == View.VISIBLE) {
+                Log.w(TAG, "页面加载超时（" + PAGE_LOAD_TIMEOUT_MS + "ms）: " + url);
+                Toast.makeText(this,
+                        "页面加载超时，请确认 VNT 组网已启动且地址可达\n" + url,
+                        Toast.LENGTH_LONG).show();
+                progressBar.setVisibility(View.GONE);
+            }
+        };
+        timeoutHandler.postDelayed(timeoutRunnable, PAGE_LOAD_TIMEOUT_MS);
+    }
+
+    private void cancelTimeoutCheck() {
+        if (timeoutRunnable != null) {
+            timeoutHandler.removeCallbacks(timeoutRunnable);
+            timeoutRunnable = null;
         }
     }
 

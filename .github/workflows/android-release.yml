@@ -177,10 +177,14 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          unsigned="app/build/outputs/apk/release/app-release-unsigned.apk"
+          # Gradle 已配置 debug keystore 签名，产物是 app-release.apk（不再是 unsigned）
+          apk="app/build/outputs/apk/release/app-release.apk"
+          # 兼容：如果因某些配置产出 unsigned，也能兜底找到
+          if [[ ! -f "$apk" ]]; then
+            apk="$(find app/build/outputs/apk/release -name '*.apk' -not -name '*.aligned.apk' | head -1)"
+          fi
           mkdir -p release-assets
           output="release-assets/VNT-Android-${APP_TAG}-${VARIANT}.apk"
-          # 检查 secrets 是否都配置好了
           missing=0
           for required in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
             if [[ -z "${!required:-}" ]]; then
@@ -189,14 +193,14 @@ jobs:
             fi
           done
           if [[ $missing -eq 1 ]]; then
-            echo "⚠️  签名 secrets 未完整配置，使用 unsigned APK"
-            cp "$unsigned" "$output"
+            echo "⚠️  签名 secrets 未完整配置，使用 Gradle 自动签名的 APK（debug keystore）"
+            cp "$apk" "$output"
           else
-            # secrets 齐全，执行正式签名流程
+            echo "🔐  使用 GitHub secrets 执行正式签名..."
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release.keystore
             build_tools="$ANDROID_SDK_ROOT/build-tools/36.0.0"
             aligned="release-assets/VNT-Android-${APP_TAG}-${VARIANT}-aligned.apk"
-            "$build_tools/zipalign" -f -P 16 4 "$unsigned" "$aligned"
+            "$build_tools/zipalign" -f -P 16 4 "$apk" "$aligned"
             "$build_tools/apksigner" sign \
               --ks release.keystore \
               --ks-key-alias "$ANDROID_KEY_ALIAS" \
