@@ -28,8 +28,6 @@ android {
             optimization {
                 enable = false
             }
-            // 与旧版保持一致：release 使用 debug keystore 签名，保证 APK 可直接安装
-            signingConfig = signingConfigs.debug
         }
     }
     compileOptions {
