@@ -8,6 +8,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -244,6 +245,7 @@ public final class MainActivity extends AppCompatActivity {
         navigation.addView(nav("♙", "在线设备", Page.PEERS), navItemParams(dp(4)));
         navigation.addView(nav("⇄", "路由表", Page.ROUTES), navItemParams(dp(4)));
         navigation.addView(nav("⚙", "组网配置", Page.CONFIG), navItemParams(dp(4)));
+        navigation.addView(nav("🌐", "内网访问", Page.INTRANET), navItemParams(dp(4)));
         navigation.addView(nav("ⓘ", "关于", Page.ABOUT), navItemParams(dp(4)));
 
         Space space = new Space(this);
@@ -338,6 +340,7 @@ public final class MainActivity extends AppCompatActivity {
             case PEERS -> peers(current);
             case ROUTES -> routes(current);
             case CONFIG -> configs(current);
+            case INTRANET -> intranet(current);
             case ABOUT -> about();
         }
     }
@@ -1482,8 +1485,305 @@ public final class MainActivity extends AppCompatActivity {
 
     private enum Page {
         DASHBOARD("网络总览"), PEERS("在线设备"),
-        ROUTES("路由表"), CONFIG("组网配置"), ABOUT("关于");
+        ROUTES("路由表"), CONFIG("组网配置"), INTRANET("内网访问"), ABOUT("关于");
         final String title;
         Page(String title) { this.title = title; }
+    }
+
+    // ==================== 内网访问相关 ====================
+
+    private static final String INTRANET_PREFS = "intranet_websites";
+
+    /** 网站配置数据类 */
+    private static final class WebsiteConfig {
+        String name;
+        String ip;
+        String port;
+        String path;
+
+        WebsiteConfig(String name, String ip, String port, String path) {
+            this.name = name;
+            this.ip = ip;
+            this.port = port;
+            this.path = path;
+        }
+
+        /** 构建基础 URL：非 80 端口时显示端口号 */
+        String baseUrl() {
+            String p = port.trim();
+            if (p.isEmpty() || p.equals("80")) return "http://" + ip;
+            return "http://" + ip + ":" + p;
+        }
+
+        /** 构建完整访问 URL */
+        String fullUrl() {
+            String normalized = path.startsWith("/") ? path : "/" + path;
+            return baseUrl() + normalized;
+        }
+
+        JSONObject toJson() {
+            try {
+                return new JSONObject()
+                        .put("name", name)
+                        .put("ip", ip)
+                        .put("port", port)
+                        .put("path", path);
+            } catch (Exception e) { return new JSONObject(); }
+        }
+
+        static WebsiteConfig fromJson(JSONObject json) {
+            return new WebsiteConfig(
+                    json.optString("name", "未命名"),
+                    json.optString("ip", "127.0.0.1"),
+                    json.optString("port", "80"),
+                    json.optString("path", "/"));
+        }
+    }
+
+    /** 从 SharedPreferences 加载网站列表 */
+    private List<WebsiteConfig> loadWebsites() {
+        List<WebsiteConfig> list = new ArrayList<>();
+        SharedPreferences prefs = getSharedPreferences("intranet", MODE_PRIVATE);
+        String jsonStr = prefs.getString(INTRANET_PREFS, null);
+        if (jsonStr != null && !jsonStr.isEmpty()) {
+            try {
+                JSONArray arr = new JSONArray(jsonStr);
+                for (int i = 0; i < arr.length(); i++) {
+                    list.add(WebsiteConfig.fromJson(arr.getJSONObject(i)));
+                }
+                return list;
+            } catch (Exception ignored) {}
+        }
+        // 默认两个配置
+        list.add(new WebsiteConfig("用户端", "127.0.0.1", "80", "/"));
+        list.add(new WebsiteConfig("管理员", "127.0.0.1", "80", "/admin"));
+        return list;
+    }
+
+    /** 保存网站列表到 SharedPreferences */
+    private void saveWebsites(List<WebsiteConfig> list) {
+        JSONArray arr = new JSONArray();
+        for (WebsiteConfig w : list) arr.put(w.toJson());
+        getSharedPreferences("intranet", MODE_PRIVATE).edit()
+                .putString(INTRANET_PREFS, arr.toString()).apply();
+    }
+
+    /** 内网访问页面主体 */
+    private void intranet(VntState current) {
+        // VNT 未运行时显示警告
+        if (current.status != VntState.Status.RUNNING) {
+            LinearLayout warning = card();
+            warning.addView(text("⚠", 22, true, AMBER));
+            TextView warnText = text("请先在「组网配置」中启动一个 VNT 网络，再访问内网网站。" +
+                    "内网网站地址需要通过 VNT 虚拟网络才能路由到达。",
+                    13, false, dark ? Color.rgb(253, 230, 138) : Color.rgb(146, 64, 14));
+            warnText.setPadding(dp(0), dp(10), dp(0), dp(0));
+            warning.addView(warnText);
+            pageHost.addView(warning, top(14));
+        }
+
+        List<WebsiteConfig> websites = loadWebsites();
+
+        // 标题
+        LinearLayout headRow = row();
+        headRow.setGravity(Gravity.CENTER_VERTICAL);
+        headRow.addView(text("🌐", 24, true, INDIGO));
+        headRow.addView(text("  内网网站", 17, true, textStrong()), top(0));
+        pageHost.addView(headRow);
+        pageHost.addView(text("点击卡片打开对应网站 · 长按可编辑或删除", 12, false, textMuted()), top(6));
+
+        // 2 列卡片网格
+        pageHost.addView(text("网站列表", 13, true, INDIGO), top(20));
+        if (websites.isEmpty()) {
+            empty("暂无内网网站，点击下方按钮添加");
+        } else {
+            LinearLayout currentRow = null;
+            for (int i = 0; i < websites.size(); i++) {
+                WebsiteConfig site = websites.get(i);
+                final int index = i;
+
+                // 每 2 个卡片换一行
+                if (currentRow == null || i % 2 == 0) {
+                    currentRow = row();
+                    currentRow.addView(buildWebsiteCard(site, index, websites), weighted());
+                    currentRow.addView(buildWebsiteCard(
+                            i + 1 < websites.size() ? websites.get(i + 1) : null,
+                            i + 1, websites), weightedWithStart());
+                    pageHost.addView(currentRow, top(10));
+                }
+                // 卡片点击/长按在 buildWebsiteCard 内绑定
+            }
+        }
+
+        // 添加网站按钮
+        Button addBtn = styledButton("＋  添加网站", INDIGO, Color.WHITE, 0);
+        addBtn.setOnClickListener(v -> showWebsiteDialog(null, -1));
+        pageHost.addView(addBtn, top(22));
+
+        // 使用说明
+        LinearLayout tips = card();
+        tips.addView(text("💡 使用说明", 14, true, textStrong()));
+        String tipsText = "• 点击卡片打开对应内网网站\n" +
+                "• 长按卡片可编辑或删除\n" +
+                "• 每个网站独立配置名称、IP、端口和路径\n" +
+                "• 需要先启动 VNT 组网才能访问内网";
+        tips.addView(text(tipsText, 12, false, textMuted()), top(10));
+        pageHost.addView(tips, top(14));
+    }
+
+    /** 构建单个网站卡片 */
+    private LinearLayout buildWebsiteCard(WebsiteConfig site, int index, List<WebsiteConfig> websites) {
+        LinearLayout card = column();
+        card.setPadding(dp(14), dp(16), dp(14), dp(16));
+        card.setBackground(round(bgCard(), 12, border(), 1));
+
+        // 空占位卡片（奇数个时补空）
+        if (site == null) {
+            card.setBackgroundColor(Color.TRANSPARENT);
+            card.setClickable(false);
+            card.setFocusable(false);
+            return card;
+        }
+
+        // 图标 + 名称
+        LinearLayout head = row();
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(text("🌐", 22, true, INDIGO));
+        TextView nameView = text(site.name, 14, true, textStrong());
+        head.addView(nameView, top(0));
+        card.addView(head);
+
+        // URL
+        TextView urlView = text(site.fullUrl(), 11, false, textMuted());
+        urlView.setSingleLine(true);
+        urlView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        card.addView(urlView, top(8));
+
+        // 点击打开 WebView
+        card.setOnClickListener(v -> openWebsite(site));
+        // 长按弹出编辑/删除菜单
+        card.setOnLongClickListener(v -> {
+            showWebsiteOptions(index, websites);
+            return true;
+        });
+
+        card.setClickable(true);
+        card.setFocusable(true);
+        return card;
+    }
+
+    /** 打开内网网站 */
+    private void openWebsite(WebsiteConfig site) {
+        Intent intent = new Intent(this, IntranetWebActivity.class);
+        intent.putExtra(IntranetWebActivity.EXTRA_URL, site.fullUrl());
+        intent.putExtra(IntranetWebActivity.EXTRA_TITLE, site.name);
+        startActivity(intent);
+    }
+
+    /** 长按弹出操作菜单：编辑 / 删除 */
+    private void showWebsiteOptions(int index, List<WebsiteConfig> websites) {
+        WebsiteConfig site = websites.get(index);
+        String[] items = {"编辑", "删除"};
+        new AlertDialog.Builder(this)
+                .setTitle(site.name)
+                .setItems(items, (dialog, which) -> {
+                    if (which == 0) {
+                        showWebsiteDialog(site, index);
+                    } else if (which == 1) {
+                        confirmDeleteWebsite(site.name, index, websites);
+                    }
+                })
+                .show();
+    }
+
+    /** 删除二次确认 */
+    private void confirmDeleteWebsite(String name, int index, List<WebsiteConfig> websites) {
+        new AlertDialog.Builder(this)
+                .setTitle("确认删除")
+                .setMessage("确定删除 \"" + name + "\" 吗？")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("删除", (dialog, which) -> {
+                    websites.remove(index);
+                    saveWebsites(websites);
+                    render();
+                    toast("已删除");
+                })
+                .show();
+    }
+
+    /** 添加 / 编辑网站对话框 */
+    private void showWebsiteDialog(WebsiteConfig existing, int editIndex) {
+        boolean isEdit = existing != null && editIndex >= 0;
+
+        LinearLayout form = column();
+        form.setPadding(dp(14), dp(4), dp(14), dp(18));
+
+        EditText nameField = field(form, "显示名称",
+                existing == null ? "" : existing.name, false,
+                "例如: 闲鱼用户端", null);
+        EditText ipField = field(form, "服务器地址",
+                existing == null ? "127.0.0.1" : existing.ip, false,
+                "例如: 192.168.1.10", null);
+        EditText portField = field(form, "端口",
+                existing == null ? "80" : existing.port, false,
+                "例如: 80", null);
+        portField.setInputType(InputType.TYPE_CLASS_NUMBER);
+        EditText pathField = field(form, "路径",
+                existing == null ? "/" : existing.path, false,
+                "例如: / 或 /admin", null);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(form);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(isEdit ? "编辑网站" : "添加网站")
+                .setView(scroll)
+                .setNegativeButton("取消", null)
+                .setPositiveButton(isEdit ? "保存" : "添加", null)
+                .create();
+
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            try {
+                String name = nameField.getText().toString().trim();
+                if (name.isEmpty()) name = "未命名";
+
+                // 规范化 IP：去除协议头和路径
+                String ip = ipField.getText().toString().trim()
+                        .replaceAll("^https?://", "").split("/")[0];
+                if (ip.isEmpty()) { toast("请填写服务器地址"); return; }
+
+                String port = portField.getText().toString().trim();
+                if (port.isEmpty()) port = "80";
+                int portNum = Integer.parseInt(port);
+                if (portNum < 1 || portNum > 65535) { toast("端口必须在 1-65535 之间"); return; }
+
+                // 规范化路径
+                String path = pathField.getText().toString().trim();
+                if (path.isEmpty()) path = "/";
+                path = path.startsWith("/") ? path : "/" + path;
+
+                WebsiteConfig config = new WebsiteConfig(name, ip, String.valueOf(portNum), path);
+                List<WebsiteConfig> sites = loadWebsites();
+                if (isEdit) {
+                    sites.set(editIndex, config);
+                } else {
+                    sites.add(config);
+                }
+                saveWebsites(sites);
+                dialog.dismiss();
+                render();
+            } catch (NumberFormatException e) {
+                toast("端口必须是数字");
+            } catch (Exception e) {
+                toast("保存失败：" + e.getMessage());
+            }
+        }));
+
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
     }
 }
