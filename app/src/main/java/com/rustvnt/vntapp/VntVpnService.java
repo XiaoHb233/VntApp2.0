@@ -211,7 +211,8 @@ public final class VntVpnService extends VpnService {
                 .setSession("VNT · " + name)
                 .setMtu(mtu)
                 .addAddress(ip, prefixLen);
-        builder.addDisallowedApplication(getPackageName());
+        // 不排除应用自身：内网 WebView 需要走 VPN 隧道访问虚拟网段（与旧版 1.0 行为一致）。
+        // VPN 路由仅覆盖虚拟网段与子网路由网段，Rust 核心连接公网服务器的流量不会被截获，无回环风险。
         for (VpnRouteSet.Route route : VpnRouteSet.build(ip, prefixLen,
                 arrayStrings(config.optJSONArray("output")),
                 arrayStrings(config.optJSONArray("input")), activeSubnetRoutes)) {
