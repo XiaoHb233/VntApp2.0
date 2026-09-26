@@ -44,6 +44,7 @@ public class IntranetWebActivity extends AppCompatActivity {
     // 页面加载超时检测
     private final Handler timeoutHandler = new Handler(Looper.getMainLooper());
     private Runnable timeoutRunnable;
+    private volatile boolean pageFinished;
     private static final long PAGE_LOAD_TIMEOUT_MS = 15000;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -140,6 +141,8 @@ public class IntranetWebActivity extends AppCompatActivity {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 progressBar.setVisibility(View.VISIBLE);
+                // 诊断输出（v2.1.2 临时）：显示实际开始加载的地址
+                Toast.makeText(IntranetWebActivity.this, "▶ 开始加载：" + url, Toast.LENGTH_SHORT).show();
                 // 启动超时检测
                 startTimeoutCheck(url);
             }
@@ -147,7 +150,12 @@ public class IntranetWebActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 progressBar.setVisibility(View.GONE);
+                pageFinished = true;
                 cancelTimeoutCheck();
+                // 诊断输出（v2.1.2 临时）：标题和内容高度能区分"空响应"与"渲染失败"
+                Toast.makeText(IntranetWebActivity.this,
+                        "✔ 加载完成：" + view.getTitle() + " | 内容高度=" + view.getContentHeight(),
+                        Toast.LENGTH_LONG).show();
             }
 
             @Override
@@ -158,7 +166,7 @@ public class IntranetWebActivity extends AppCompatActivity {
                             ? error.getDescription().toString() : "加载失败";
                     Log.e(TAG, "onReceivedError: url=" + request.getUrl() + " err=" + desc);
                     Toast.makeText(IntranetWebActivity.this,
-                            "页面加载失败：" + desc, Toast.LENGTH_LONG).show();
+                            "页面加载失败：" + desc + "\n" + request.getUrl(), Toast.LENGTH_LONG).show();
                 }
                 super.onReceivedError(view, request, error);
             }
@@ -180,7 +188,7 @@ public class IntranetWebActivity extends AppCompatActivity {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 progressBar.setProgress(newProgress);
-                if (newProgress >= 100) cancelTimeoutCheck();
+                // 超时取消只由 onPageFinished 负责，进度到 100 不代表加载结束
             }
 
             @Override
@@ -197,14 +205,15 @@ public class IntranetWebActivity extends AppCompatActivity {
         }
     }
 
-    /** 启动页面加载超时检测，15s 还没完成就提示用户 */
+    /** 启动页面加载超时检测，15s 还没 onPageFinished 就提示用户 */
     private void startTimeoutCheck(String url) {
         cancelTimeoutCheck();
+        pageFinished = false;
         timeoutRunnable = () -> {
-            if (webView != null && progressBar.getVisibility() == View.VISIBLE) {
+            if (!pageFinished) {
                 Log.w(TAG, "页面加载超时（" + PAGE_LOAD_TIMEOUT_MS + "ms）: " + url);
                 Toast.makeText(this,
-                        "页面加载超时，请确认 VNT 组网已启动且地址可达\n" + url,
+                        "页面加载超时，请求未完成，请确认 VNT 组网已启动且地址可达\n" + url,
                         Toast.LENGTH_LONG).show();
                 progressBar.setVisibility(View.GONE);
             }
